@@ -24,6 +24,9 @@ jobs:
           pip install -r requirements.txt
           playwright install firefox
 
+      - name: 📁 Ensure logs folder exists
+        run: mkdir -p logs/mega
+
       - name: 🧠 Run Mega Login Script
         env:
           MEGA: ${{ secrets.MEGA }}
