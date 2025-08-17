@@ -35,10 +35,11 @@ Year = get_year()
 # Inspired by this discussion topic:
 # https://stackoverflow.com/questions/19765139/what-is-the-proper-way-to-do-logging-in-csv-file
 class CsvFormatter(logging.Formatter):
-    def __init__(self, filename="temp"):
+    def __init__(self, filename):
         super().__init__()  # calls the init method of the Formatter class
         self.output = io.StringIO()
         self.filename = filename
+        self.logger = logging.getLogger(__name__)
         self.fieldnames = ["Date", "Time", "Level", "Message"]
         self.csvfile = None
 
