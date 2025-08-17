@@ -12,43 +12,22 @@ class LoginLogger:
         self.dashboard_url = homepage
         self.filename = filename
 
-        # 📝 Création du formatter CSV personnalisé
-        self.formatter = CsvFormatter(filename)
+        # CSV Formatter
+        self.formatter = CsvFormatter(self.filename)
 
-        # 🧱 Création du handler de log (utilisé à la fois en fichier et console)
-        self.DuoHandler = logging.StreamHandler(self.formatter.csvfile)
-        self.DuoHandler.setFormatter(self.formatter)
-
-        # 📒 Création du logger principal
-        self.logger = logging.getLogger(f"logger_{usr}")
+        # Setup logger
+        self.logger = logging.getLogger(self.usr)
         self.logger.setLevel(logging.DEBUG)
 
-        # Supprime les anciens handlers (évite duplication)
-        if self.logger.hasHandlers():
-            self.logger.handlers.clear()
+        # Stream handler (console)
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(logging.Formatter("%(levelname)s - %(message)s"))
+        self.logger.addHandler(stream_handler)
 
-        # 🔗 Attache le handler personnalisé
-        self.logger.addHandler(self.DuoHandler)
+        # File handler using CsvFormatter
+        file_handler = logging.StreamHandler(self.formatter.output)
+        file_handler.setFormatter(self.formatter)
+        self.logger.addHandler(file_handler)
 
-    def one_step_login(self, playwright, login_btn_selector):
-        browser = playwright.firefox.launch(headless=True)
-        context = browser.new_context()
-        page = context.new_page()
-        page.goto(self.login_url)
-
-        page.fill(self.usr_sel, self.usr)
-        page.fill(self.pwd_sel, self.pwd)
-        self.logger.info("Submitting login form")
-        page.click(login_btn_selector)
-        page.wait_for_url(self.dashboard_url)
-
-        self.logger.info("✅ Login successful")
-        self.tab = page
-        self.browser = browser
-        self.context = context
-
-    def redirect(self, href_sel):
-        self.tab.wait_for_selector(href_sel)
-        self.tab.click(href_sel)
-        self.tab.wait_for_load_state("networkidle")
-        self.logger.info(f"➡️ Redirected to: {self.tab.url}")
+        # For reference when closing
+        self.DuoHandler = file_handler
