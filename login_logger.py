@@ -1,33 +1,75 @@
+import sys
+sys.dont_write_bytecode = True
+
+from datetime import datetime, timezone
 import logging
-from logging_formatter import CsvFormatter
+import csv
+import io
+import os
 
-class LoginLogger:
-    def __init__(self, base_url, login_url, usr_sel, usr, pwd_sel, pwd, homepage, filename):
-        self.base_url = base_url
-        self.login_url = login_url
-        self.usr_sel = usr_sel
-        self.usr = usr
-        self.pwd_sel = pwd_sel
-        self.pwd = pwd
-        self.dashboard_url = homepage
+def get_datetime():
+    datetimestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S:%f")
+    return datetimestamp
+
+def get_datestamp():
+    datestamp = get_datetime().split()[0]
+    return datestamp
+
+def get_timestamp():
+    timestamp = get_datetime().split()[1]
+    return timestamp
+
+def get_year():
+    year = get_datestamp().split("-")[0]
+    return year
+
+Year = get_year()
+
+class CsvFormatter:
+    def __init__(self, filename):
+        self.output = io.StringIO()
         self.filename = filename
+        self.fieldnames = ["Date", "Time", "Level", "Message"]
+        self.csvfile = None
 
-        # CSV Formatter
-        self.formatter = CsvFormatter(self.filename)
+        # File writer setup
+        if os.path.isfile(self.filename):
+            self.csvfile = open(self.filename, "a+", newline="", encoding="utf-8")
+        else:
+            self.csvfile = open(self.filename, "w+", newline="", encoding="utf-8")
+        
+        self.file_writer = csv.DictWriter(
+            self.csvfile,
+            quoting=csv.QUOTE_ALL,
+            fieldnames=self.fieldnames,
+            extrasaction="ignore"
+        )
 
-        # Setup logger
-        self.logger = logging.getLogger(self.usr)
-        self.logger.setLevel(logging.DEBUG)
+        if os.path.getsize(self.filename) == 0:
+            self.file_writer.writeheader()
 
-        # Stream handler (console)
-        stream_handler = logging.StreamHandler()
-        stream_handler.setFormatter(logging.Formatter("%(levelname)s - %(message)s"))
-        self.logger.addHandler(stream_handler)
+        # Stream handler (console) writer
+        self.console_writer = csv.writer(
+            self.output, quoting=csv.QUOTE_MINIMAL, delimiter="\t"
+        )
 
-        # File handler using CsvFormatter
-        file_handler = logging.StreamHandler(self.formatter.output)
-        file_handler.setFormatter(self.formatter)
-        self.logger.addHandler(file_handler)
+    def format(self, record):
+        Date = get_datestamp()
+        Time = get_timestamp()
+        self.file_writer.writerow(
+            {
+                "Date": Date,
+                "Time": Time,
+                "Level": record.levelname,
+                "Message": record.msg,
+            }
+        )
+        self.console_writer.writerow([Date, Time, record.levelname, record.msg])
+        data = self.output.getvalue()
+        self.output.truncate(0)
+        self.output.seek(0)
+        return data.strip()
 
-        # For reference when closing
-        self.DuoHandler = file_handler
+    def close(self):
+        if self.csvfile:
+            self.csvfile.close()
