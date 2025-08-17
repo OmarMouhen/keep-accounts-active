@@ -1,75 +1,33 @@
-import sys
-sys.dont_write_bytecode = True
-
-from datetime import datetime, timezone
+from playwright.sync_api import sync_playwright
 import logging
-import csv
-import io
-import os
+from logging_formatter import CsvFormatter, DuoHandler
 
-def get_datetime():
-    datetimestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S:%f")
-    return datetimestamp
+class LoginLogger:
+    def __init__(self, base_url, login_url, usr_sel, usr, pwd_sel, pwd, homepage, filename):
+        self.logger = logging.getLogger(usr)
+        self.logger.setLevel(logging.DEBUG)
+        self.formatter = CsvFormatter(filename)
+        self.DuoHandler = DuoHandler(self.formatter)
+        self.logger.addHandler(self.DuoHandler)
+        self.base_url = base_url
+        self.login_url = login_url
+        self.usr_sel = usr_sel
+        self.usr = usr
+        self.pwd_sel = pwd_sel
+        self.pwd = pwd
+        self.homepage = homepage
+        self.tab = None
 
-def get_datestamp():
-    datestamp = get_datetime().split()[0]
-    return datestamp
+    def one_step_login(self, pw, btn_sel):
+        browser = pw.chromium.launch(headless=True)
+        context = browser.new_context()
+        self.tab = context.new_page()
+        self.tab.goto(self.login_url)
+        self.tab.fill(self.usr_sel, self.usr)
+        self.tab.fill(self.pwd_sel, self.pwd)
+        self.tab.click(btn_sel)
+        self.tab.wait_for_url(self.homepage, timeout=20000)
 
-def get_timestamp():
-    timestamp = get_datetime().split()[1]
-    return timestamp
-
-def get_year():
-    year = get_datestamp().split("-")[0]
-    return year
-
-Year = get_year()
-
-class CsvFormatter:
-    def __init__(self, filename):
-        self.output = io.StringIO()
-        self.filename = filename
-        self.fieldnames = ["Date", "Time", "Level", "Message"]
-        self.csvfile = None
-
-        # File writer setup
-        if os.path.isfile(self.filename):
-            self.csvfile = open(self.filename, "a+", newline="", encoding="utf-8")
-        else:
-            self.csvfile = open(self.filename, "w+", newline="", encoding="utf-8")
-        
-        self.file_writer = csv.DictWriter(
-            self.csvfile,
-            quoting=csv.QUOTE_ALL,
-            fieldnames=self.fieldnames,
-            extrasaction="ignore"
-        )
-
-        if os.path.getsize(self.filename) == 0:
-            self.file_writer.writeheader()
-
-        # Stream handler (console) writer
-        self.console_writer = csv.writer(
-            self.output, quoting=csv.QUOTE_MINIMAL, delimiter="\t"
-        )
-
-    def format(self, record):
-        Date = get_datestamp()
-        Time = get_timestamp()
-        self.file_writer.writerow(
-            {
-                "Date": Date,
-                "Time": Time,
-                "Level": record.levelname,
-                "Message": record.msg,
-            }
-        )
-        self.console_writer.writerow([Date, Time, record.levelname, record.msg])
-        data = self.output.getvalue()
-        self.output.truncate(0)
-        self.output.seek(0)
-        return data.strip()
-
-    def close(self):
-        if self.csvfile:
-            self.csvfile.close()
+    def redirect(self, href_sel):
+        self.tab.click(href_sel)
+        self.tab.wait_for_url("**/account", timeout=15000)
