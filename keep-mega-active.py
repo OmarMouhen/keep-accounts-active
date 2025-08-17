@@ -1,105 +1,108 @@
-import sys
+import logging
+from logging import StreamHandler
+from logging import Logger
+from logging import FileHandler
+from logging import Formatter
 import os
-import json
-import subprocess
-from dotenv import load_dotenv
-from playwright.sync_api import sync_playwright, TimeoutError
-from login_logger import LoginLogger
-from log_concat import update_logs
-from logging_formatter import Year
+import io
+import csv
+from datetime import datetime, timezone
+from playwright.sync_api import sync_playwright
 
-sys.dont_write_bytecode = True
-load_dotenv()
 
-# Load credentials
-try:
-    cred_dict = json.loads(os.getenv("MEGA"))
-except json.JSONDecodeError:
-    print("❌ Invalid MEGA credentials JSON format.")
-    sys.exit(1)
+def get_datetime():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S:%f")
 
-mega = "https://mega.nz/"
-mega_signin = mega + "login"
-mega_usr_sel = "input#login-name2"
-mega_pwd_sel = "input#login-password2"
-mega_homepage = "https://mega.nz/fm/recents"
 
-def mkfilename(a):
-    return f"logs/mega/[{Year}] {a} log.csv"
+def get_datestamp():
+    return get_datetime().split()[0]
 
-def query_mega_storage(instance):
-    page = instance.tab
-    logger = instance.logger
 
-    try:
-        page.wait_for_selector("div.account.left-pane.info-block.backup-button", timeout=15000)
-        name = page.query_selector("div.membership-big-txt.name").inner_text()
-        email = page.query_selector("div.membership-big-txt.email").inner_text()
-        plan = page.query_selector("div.account.membership-plan").inner_text()
+def get_timestamp():
+    return get_datetime().split()[1]
 
-        logger.info("✔️ Logged in successfully")
-        logger.debug(f"Name: {name}, Email: {email}, Plan: {plan}")
 
-        for category in page.query_selector_all("div.account.item-wrapper"):
-            cname = category.query_selector("div.account.progress-title > span").inner_text()
-            csize = category.query_selector("div.account.progress-size.small").inner_text()
-            logger.debug(f"{cname}: {csize}")
-    except Exception as e:
-        logger.error(f"⚠️ Could not extract profile info: {e}")
+def get_year():
+    return get_datestamp().split("-")[0]
 
-def mega_login(instance):
-    try:
-        with sync_playwright() as pw:
-            instance.one_step_login(pw, "#login_form button.login-button")
-            instance.redirect(href_sel="a.mega-component.to-my-profile.nav-elem.text-only.link")
-            query_mega_storage(instance)
-            instance.logger.info("✅ Tasks complete, closing browser")
-    except TimeoutError as e:
-        instance.logger.error(f"❌ Timeout occurred: {e}")
-        instance.tab.screenshot(path="mega_timeout.png")
-        sys.exit(1)
-    except Exception as e:
-        instance.logger.error(f"❌ Unexpected error: {e}")
-        sys.exit(1)
-    finally:
-        instance.logger.removeHandler(instance.DuoHandler)
-        instance.formatter.csvfile.close()
 
-def push_logs_to_private_repo():
-    token = os.getenv("LOGS_PUSH_TOKEN")
-    if not token:
-        print("❌ LOGS_PUSH_TOKEN not set.")
-        return
+Year = get_year()
 
-    repo_url = f"https://x-access-token:{token}@github.com/OmarMouhen/mega-login-logs.git"
 
-    try:
-        os.chdir("logs")  # switch to logs dir
-        subprocess.run(["git", "init"], check=True)
-        subprocess.run(["git", "config", "user.email", "bot@github.com"], check=True)
-        subprocess.run(["git", "config", "user.name", "GitHub Actions Bot"], check=True)
-        subprocess.run(["git", "remote", "add", "origin", repo_url], check=True)
-        subprocess.run(["git", "add", "."], check=True)
-        subprocess.run(["git", "commit", "-m", "📝 Update logs"], check=True)
-        subprocess.run(["git", "push", "-u", "origin", "main", "--force"], check=True)
-        print("✅ Logs pushed to GitHub.")
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Git error: {e}")
-
-# Main logic
-if __name__ == "__main__":
-    for i, user in enumerate(cred_dict, start=1):
-        instance = LoginLogger(
-            base_url=mega,
-            login_url=mega_signin,
-            usr_sel=mega_usr_sel,
-            usr=user,
-            pwd_sel=mega_pwd_sel,
-            pwd=cred_dict[user],
-            homepage=mega_homepage,
-            filename=mkfilename(f"mega_{i}")
+class CsvFormatter:
+    def __init__(self, filename):
+        self.filename = filename
+        self.fieldnames = ["Date", "Time", "Level", "Message"]
+        self.csvfile = open(self.filename, "a+", newline="", encoding="utf-8")
+        self.file_writer = csv.DictWriter(
+            self.csvfile,
+            quoting=csv.QUOTE_ALL,
+            fieldnames=self.fieldnames,
+            extrasaction="ignore",
         )
-        mega_login(instance)
-        update_logs(instance)
+        if os.path.getsize(self.filename) == 0:
+            self.file_writer.writeheader()
 
-    push_logs_to_private_repo()
+        self.console = io.StringIO()
+        self.console_writer = csv.writer(
+            self.console, quoting=csv.QUOTE_MINIMAL, delimiter="\t"
+        )
+
+    def format(self, level, msg):
+        Date = get_datestamp()
+        Time = get_timestamp()
+        self.file_writer.writerow({
+            "Date": Date,
+            "Time": Time,
+            "Level": level,
+            "Message": msg
+        })
+        self.console_writer.writerow([Date, Time, level, msg])
+        data = self.console.getvalue()
+        self.console.truncate(0)
+        self.console.seek(0)
+        return data.strip()
+
+    def close(self):
+        self.csvfile.close()
+
+
+class LoginLogger:
+    def __init__(self, base_url, login_url, usr_sel, usr, pwd_sel, pwd, homepage, filename):
+        self.logger = logging.getLogger(usr)
+        self.logger.setLevel(logging.DEBUG)
+        self.formatter = CsvFormatter(filename)
+
+        # Custom handler writing both to file and console
+        self.DuoHandler = logging.Handler()
+        self.DuoHandler.emit = self._emit
+        self.logger.addHandler(self.DuoHandler)
+
+        # Required for browser session
+        self.base_url = base_url
+        self.login_url = login_url
+        self.usr_sel = usr_sel
+        self.usr = usr
+        self.pwd_sel = pwd_sel
+        self.pwd = pwd
+        self.homepage = homepage
+        self.tab = None
+
+    def _emit(self, record):
+        msg = self.formatter.format(record.levelname, record.getMessage())
+        print(msg)
+
+    def one_step_login(self, pw: sync_playwright, login_btn_sel: str):
+        browser = pw.firefox.launch(headless=True)
+        context = browser.new_context()
+        page = context.new_page()
+        self.tab = page
+        page.goto(self.login_url)
+        page.fill(self.usr_sel, self.usr)
+        page.fill(self.pwd_sel, self.pwd)
+        page.click(login_btn_sel)
+        page.wait_for_url(self.homepage, timeout=15000)
+
+    def redirect(self, href_sel):
+        self.tab.click(href_sel)
+        self.tab.wait_for_url("**/account", timeout=15000)
