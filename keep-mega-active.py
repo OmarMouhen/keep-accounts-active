@@ -93,6 +93,37 @@ def mega_login(instance):
     # Close csv file in current instance when done with writing logs
     instance.formatter.csvfile.close()
 
+import subprocess
+import os
+
+def push_logs_to_private_repo():
+    username = "OmarMouhen"  # Replace with your GitHub username
+    repo_name = "mega-login-logs"  # Replace with your log repo name
+    branch = "main"  # Use 'main' or 'master' depending on your repo
+
+    token = os.getenv("LOGS_PUSH_TOKEN")
+    if not token:
+        print("❌ LOGS_PUSH_TOKEN not set in environment.")
+        return
+
+    repo_url = f"https://x-access-token:{token}@github.com/{username}/{repo_name}.git"
+
+    try:
+        print("📦 Preparing to push logs...")
+        os.chdir("logs")  # move into logs directory
+
+        subprocess.run(["git", "init"], check=True)
+        subprocess.run(["git", "config", "user.email", "bot@github.com"], check=True)
+        subprocess.run(["git", "config", "user.name", "GitHub Actions Bot"], check=True)
+        subprocess.run(["git", "remote", "add", "origin", repo_url], check=True)
+        subprocess.run(["git", "add", "."], check=True)
+        subprocess.run(["git", "commit", "-m", "📝 Update logs"], check=True)
+        subprocess.run(["git", "push", "-u", "origin", branch, "--force"], check=True)
+
+        print("✅ Logs pushed successfully.")
+
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Git push failed: {e}")
 
 if __name__ == "__main__":
     i = 1
@@ -110,3 +141,4 @@ if __name__ == "__main__":
         mega_login(instance)
         update_logs(instance)
         i += 1
+push_logs_to_private_repo()
