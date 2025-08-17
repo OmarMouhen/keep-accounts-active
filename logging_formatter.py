@@ -1,24 +1,28 @@
-from datetime import datetime, timezone
 import logging
+import datetime
+import csv
+import os
 
-def get_datetime():
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S:%f")
-
-def get_datestamp():
-    return get_datetime().split()[0]
-
-def get_timestamp():
-    return get_datetime().split()[1]
-
-def get_year():
-    return get_datestamp().split("-")[0]
-
-Year = get_year()
+Year = datetime.datetime.now().year
 
 class CsvFormatter(logging.Formatter):
+    def __init__(self, filename):
+        super().__init__()
+        self.filename = filename
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+        self.csvfile = open(filename, 'w', newline='', encoding='utf-8')
+        self.writer = csv.writer(self.csvfile)
+        self.writer.writerow(["Level", "Message"])
+
     def format(self, record):
-        date = get_datestamp()
-        time = get_timestamp()
-        level = record.levelname
-        msg = record.getMessage()
-        return f'"{date}","{time}","{level}","{msg}"'
+        self.writer.writerow([record.levelname, record.getMessage()])
+        self.csvfile.flush()
+        return super().format(record)
+
+class DuoHandler(logging.Handler):
+    def __init__(self, formatter):
+        super().__init__()
+        self.setFormatter(formatter)
+
+    def emit(self, record):
+        print(self.format(record))
