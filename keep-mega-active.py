@@ -39,7 +39,7 @@ mega_homepage = "https://mega.nz/fm/recents"
 
 
 def mkfilename(a):
-    filename = f"[{Year}] {a} log.csv"
+    filename = f"logs/mega/[{Year}] {a} log.csv"
     return filename
 
 
