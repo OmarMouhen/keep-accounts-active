@@ -12,11 +12,43 @@ class LoginLogger:
         self.dashboard_url = homepage
         self.filename = filename
 
-        # CSV Formatter + FileHandler
-        self.logger = logging.getLogger(f"mega_logger_{usr}")
-        self.logger.setLevel(logging.INFO)
-        self.logger.propagate = False
+        # 📝 Création du formatter CSV personnalisé
+        self.formatter = CsvFormatter(filename)
 
-        self.DuoHandler = logging.FileHandler(self.filename, encoding="utf-8")
-        self.DuoHandler.setFormatter(CsvFormatter())
+        # 🧱 Création du handler de log (utilisé à la fois en fichier et console)
+        self.DuoHandler = logging.StreamHandler(self.formatter.csvfile)
+        self.DuoHandler.setFormatter(self.formatter)
+
+        # 📒 Création du logger principal
+        self.logger = logging.getLogger(f"logger_{usr}")
+        self.logger.setLevel(logging.DEBUG)
+
+        # Supprime les anciens handlers (évite duplication)
+        if self.logger.hasHandlers():
+            self.logger.handlers.clear()
+
+        # 🔗 Attache le handler personnalisé
         self.logger.addHandler(self.DuoHandler)
+
+    def one_step_login(self, playwright, login_btn_selector):
+        browser = playwright.firefox.launch(headless=True)
+        context = browser.new_context()
+        page = context.new_page()
+        page.goto(self.login_url)
+
+        page.fill(self.usr_sel, self.usr)
+        page.fill(self.pwd_sel, self.pwd)
+        self.logger.info("Submitting login form")
+        page.click(login_btn_selector)
+        page.wait_for_url(self.dashboard_url)
+
+        self.logger.info("✅ Login successful")
+        self.tab = page
+        self.browser = browser
+        self.context = context
+
+    def redirect(self, href_sel):
+        self.tab.wait_for_selector(href_sel)
+        self.tab.click(href_sel)
+        self.tab.wait_for_load_state("networkidle")
+        self.logger.info(f"➡️ Redirected to: {self.tab.url}")
