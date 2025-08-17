@@ -142,3 +142,25 @@ if __name__ == "__main__":
         update_logs(instance)
         i += 1
 push_logs_to_private_repo()
+
+import subprocess
+import os
+
+def push_logs_to_private_repo():
+    # Path to the logs folder
+    logs_path = os.path.abspath("logs/mega")
+    
+    # Repository URL using GitHub token
+    repo_url = "https://x-access-token:${{ secrets.LOGS_PUSH_TOKEN }}@github.com/OmarMouhen/mega-login-logs.git"
+
+    # Go to logs/mega folder
+    os.chdir(logs_path)
+
+    # Initialize git and push logs
+    subprocess.run("git init", shell=True)
+    subprocess.run("git config user.email 'you@example.com'", shell=True)
+    subprocess.run("git config user.name 'GitHub Actions Bot'", shell=True)
+    subprocess.run(f"git remote add origin {repo_url}", shell=True)
+    subprocess.run("git add .", shell=True)
+    subprocess.run("git commit -m 'Update Mega logs'", shell=True)
+    subprocess.run("git push -u origin master --force", shell=True)
